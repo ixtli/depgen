@@ -31,7 +31,7 @@ class AppState:
     """
     
     # Our 'private' data members: These are subject to change without notice
-    _source_file = ""
+    _source_path = ""
     _output_path = ""
     _output_file = None
     _writeout_messages = False
@@ -87,16 +87,16 @@ class AppState:
                 self.usage(argv[0])
                 sys.exit(2)
         
-        # Expect the value for _source_file
+        # Expect the value for _source_path
         if len(args) < 1:
             self.log("Not enough arguments provided.", QUIET)
             self.usage(argv[0])
             sys.exit(2)
         
-        self._source_file = os.path.abspath(args[0])
-        self.log("Set source file to: " + self.source_file(), DEBUG)
+        self._source_path = os.path.abspath(args[0])
+        self.log("Set source file to: " + self.source_path(), DEBUG)
         # Test the source directory
-        if os.path.exists(self._source_file) == False:
+        if os.path.exists(self._source_path) == False:
             self.log("Invalid source file given.", QUIET)
             self.usage(argv[0])
             sys.exit(2)
@@ -120,7 +120,7 @@ class AppState:
                     self.log("Aborting.", QUIET)
                     sys.exit(3)
                 self.log("Successfully opened output file.", DEBUG)
-        
+                self.emit_file_header()
         
         self.log("Application context initialized.", DEBUG)
     
@@ -129,8 +129,9 @@ class AppState:
         """Destructor."""
         
         self.log("Destroying application context.", DEBUG)
-        self.log("Closing output file.", DEBUG)
-        self._output_file.close()
+        if self._output_file != None:
+            self.log("Closing output file.", DEBUG)
+            self._output_file.close()
     
     def usage(self, scriptname):
         
@@ -158,11 +159,11 @@ class AppState:
             if self._writeout_messages and self._output_file != None:
                 self.emit_to_file("// " + message)
     
-    def source_file(self):
+    def source_path(self):
         
         """Return the current source directory."""
         
-        return self._source_file
+        return self._source_path
     
     def output_path(self):
         
@@ -183,21 +184,24 @@ class AppState:
         If comment = True, then prefix with // as per DOT language specs.
         """
         
-        if _output_file == None:
+        if self._output_file == None:
             self.log("Tried to emit to file when one wasn't set.", DEBUG)
             return
-        if commit == True:
+        if comment == True:
             self._output_file.write("// ")
-        self._output_file.write(str(message))
+        self._output_file.write(str(message) + '\n')
         
 
     def emit_file_header(self):
         
         """Emit an informative file header."""
         
-        basename = os.path.basename(self.source_directory())
+        self.log("Emitting file header.", DEBUG)
+        
+        basename = os.path.basename(self.output_path())
         self.emit_to_file("Dependancy graph of " + basename, True)
 
 
 if __name__ == "__main__":
      app = AppState(sys.argv)
+     del app #if we don't do this, it cleans up the globals before deleting
