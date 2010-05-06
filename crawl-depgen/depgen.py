@@ -31,7 +31,7 @@ class AppState:
     """
     
     # Our 'private' data members: These are subject to change without notice
-    _source_dir = ""
+    _source_file = ""
     _output_path = ""
     _output_file = None
     _writeout_messages = False
@@ -77,10 +77,24 @@ class AppState:
                 self.usage(argv[0])
                 sys.exit(2)
         
-        # Expect the value for _source_dir
+        # Expect the value for _source_file
         if len(args) < 1:
             self.log("Not enough arguments provided.", QUIET)
             self.usage(argv[0])
+            sys.exit(2)
+        
+        self._source_file = os.path.abspath(args[0])
+        self.log("Set source file to: " + self.source_file(), DEBUG)
+        # Test the source directory
+        if os.path.exists(self._source_file) == False:
+            self.log("Invalid source file given.", QUIET)
+            self.usage(argv[0])
+            sys.exit(2)
+        
+        # Optionally set _output_path
+        if len(args) > 1:
+            self._output_path = os.abspath(os.getcwd(), args[1])
+            self.log("Outputting graph to file: " + self._output_path, VERBOSE)
         
         self.log("AppState initialized.", DEBUG)
     
@@ -93,10 +107,10 @@ class AppState:
         opt = ""
         for o in self._options.keys():
              opt += o
-        self.log(  scriptname + " [-" + opt +
-                "] <source dir> [<target dir>]", QUIET)
+        self.log( "USEAGE: " + scriptname + " [-" + opt +
+                "] <source dir> [<target dir>]")
     
-    def log(self, message, verb = 0):
+    def log(self, message, verb = 0, woe = True):
         
         """Print to stdout and append // so that our output is always
         a valid DOT file.
@@ -104,15 +118,14 @@ class AppState:
         
         if self.verbosity() >= verb and self.verbosity() > SILENT:
             print str(message)
-        
-        if self.verbosity() == DEBUG and self._output_file != None:
-            self.emit_to_file("// " + message)
+            if self._writeout_messages and self._output_file != None:
+                self.emit_to_file("// " + message)
     
-    def source_directory(self):
+    def source_file(self):
         
         """Return the current source directory."""
         
-        return self._source_dir
+        return self._source_file
     
     def output_path(self):
         
