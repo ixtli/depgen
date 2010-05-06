@@ -16,11 +16,11 @@ Written by Chris Galardi ~5/2010
 """
 
 # "Constants"
-SILENT = -10        # Tell us nothing
+SILENT = -10        # But deadly
 QUIET = -5          # Errors only
-NOT_VERBOSE = 0     # Softspoken
-VERBOSE = 5         # Lots of messages
-DEBUG = 10          # Tell us everything
+NOT_VERBOSE = 0     # Softspoken: Warnings and errors
+VERBOSE = 5         # Informative
+DEBUG = 10          # Annoying
 
 # Application State
 class AppState:
@@ -35,17 +35,21 @@ class AppState:
     _output_path = ""
     _output_file = None
     _writeout_messages = False
+    _verbosity = NOT_VERBOSE
+    _file_header = True
+    _emit_to_stdout = True
     _options = {    "v": "verbose",
                     "q": "quiet",
                     "d": "debug",
                     "s": "silent",
-                    "l": "writeout-messages"  }
-    _verbosity = NOT_VERBOSE
+                    "l": "writeout-messages",
+                    "n": "no-header",
+                    "f": "file-output-only" }
     
     # Member function definitions
     def __init__(self, argv):
         
-        """Class init method.  Expects command line arguments from execution."""
+        """Expects command line arguments from execution."""
         
         try:
             opt = ""
@@ -72,6 +76,12 @@ class AppState:
                 # Output file
                 self._writeout_messages = True
                 self.log("Writing messages to output file.", DEBUG)
+            elif option in ("-n", self._options["n"]):
+                self._file_header = False
+                self.log("Not emitting file header.", DEBUG)
+            elif option in ("-f", self._options["f"]):
+                self._emit_to_stdout = False
+                self.log("Not emitting DOT code to stdout.", DEBUG)
             else:
                 self.log("Unknown option '" + option +"'.", QUIET)
                 self.usage(argv[0])
@@ -93,10 +103,34 @@ class AppState:
         
         # Optionally set _output_path
         if len(args) > 1:
-            self._output_path = os.abspath(os.getcwd(), args[1])
-            self.log("Outputting graph to file: " + self._output_path, VERBOSE)
+            self._output_path = os.path.abspath(args[1])
+            if os.path.exists(self.output_path()):
+                if os.path.isdir(self.output_path()):
+                    self.log("Output path is a directory.  Ignoring.", QUIET)
+                    self._output_path = ""
+                else:
+                    self.log("Output path exists.  Clobbering.", VERBOSE)
+            if self.output_path():
+                #Open the path
+                self.log("Outputting graph to file: " + self.output_path(), DEBUG)
+                try:
+                    self._output_file = open(self.output_path(), 'w')
+                except IOError as err:
+                    self.log("Could not open output file: " + str(err))
+                    self.log("Aborting.", QUIET)
+                    sys.exit(3)
+                self.log("Successfully opened output file.", DEBUG)
         
-        self.log("AppState initialized.", DEBUG)
+        
+        self.log("Application context initialized.", DEBUG)
+    
+    def __del__(self):
+        
+        """Destructor."""
+        
+        self.log("Destroying application context.", DEBUG)
+        self.log("Closing output file.", DEBUG)
+        self._output_file.close()
     
     def usage(self, scriptname):
         
@@ -110,13 +144,16 @@ class AppState:
         self.log( "USEAGE: " + scriptname + " [-" + opt +
                 "] <source dir> [<target dir>]")
     
-    def log(self, message, verb = 0, woe = True):
+    def log(self, message, verb = 0):
         
         """Print to stdout and append // so that our output is always
         a valid DOT file.
         """
         
-        if self.verbosity() >= verb and self.verbosity() > SILENT:
+        if self.verbosity() == SILENT:
+            return
+        
+        if self.verbosity() >= verb:
             print str(message)
             if self._writeout_messages and self._output_file != None:
                 self.emit_to_file("// " + message)
@@ -139,6 +176,27 @@ class AppState:
         
         return self._verbosity
 
+    def emit_to_file(self, message, comment = False):
+        
+        """Emit a string to the output file.
+        
+        If comment = True, then prefix with // as per DOT language specs.
+        """
+        
+        if _output_file == None:
+            self.log("Tried to emit to file when one wasn't set.", DEBUG)
+            return
+        if commit == True:
+            self._output_file.write("// ")
+        self._output_file.write(str(message))
+        
+
+    def emit_file_header(self):
+        
+        """Emit an informative file header."""
+        
+        basename = os.path.basename(self.source_directory())
+        self.emit_to_file("Dependancy graph of " + basename, True)
 
 
 if __name__ == "__main__":
