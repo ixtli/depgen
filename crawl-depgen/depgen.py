@@ -4,6 +4,7 @@ import sys
 import os
 import time
 import getopt
+import re
 
 """Depgen - A C/C++ header file dependancy generator that ouputs a graph in
 the DOT graph description language.
@@ -38,13 +39,17 @@ class AppState:
     _verbosity = NOT_VERBOSE
     _file_header = True
     _emit_to_stdout = True
+    _filename_regex = None
+    _locality = 0
     _options = {    "v": "verbose",
                     "q": "quiet",
                     "d": "debug",
                     "s": "silent",
                     "l": "writeout-messages",
                     "n": "no-header",
-                    "f": "file-output-only" }
+                    "f": "file-output-only",
+                    "r:": "file-name-regex",
+                    "u": "usage" }
     
     # Member function definitions
     def __init__(self, argv):
@@ -82,6 +87,12 @@ class AppState:
             elif option in ("-f", self._options["f"]):
                 self._emit_to_stdout = False
                 self.log("Not emitting DOT code to stdout.", DEBUG)
+            elif option in ("-r", self._options["r:"]):
+                self._filename_regex = re.compile(value);
+                self.log("Parsing files that match '" + value + "'.", DEBUG)
+            elif option in ("-u", self._options["u"]):
+                self.usage(argv[0])
+                sys.exit(0)
             else:
                 self.log("Unknown option '" + option +"'.", QUIET)
                 self.usage(argv[0])
@@ -141,7 +152,7 @@ class AppState:
         
         opt = ""
         for o in self._options.keys():
-             opt += o
+             opt += o[0]
         self.log( "USEAGE: " + scriptname + " [-" + opt +
                 "] <source dir> [<target dir>]")
     
@@ -165,6 +176,12 @@ class AppState:
         
         return self._source_path
     
+    def filename_regex(self):
+        
+        """Return the regex for matchin files in _source_file"""
+        
+        return self._filename_regex
+    
     def output_path(self):
         
         """Return the current output path."""
@@ -176,6 +193,9 @@ class AppState:
         """Return the current verbosity."""
         
         return self._verbosity
+
+    def locality(self):
+        return self._locality
 
     def emit_to_file(self, message, comment = False):
         
@@ -201,7 +221,67 @@ class AppState:
         basename = os.path.basename(self.output_path())
         self.emit_to_file("Dependancy graph of " + basename, True)
 
+class Parser:
+    app = None
+    
+    def __init__(self, a):
+        a.log("Initializing parser context", DEBUG)
+        app = a
+    
+    def __del__(self):
+        app.log("Destroying parser context", DEBUG)
+    
+    def parse(self):
+        
+        """Parse the file at app.source_path().
+        
+        If the file is a directory, search through it's listing with the user-
+        defined or default regexp and parse the results one by one.
+        """
+        
+        app.log("Opening source file.", DEBUG)
+        if os.path.isdir(app.source_path()) == True:
+            regex = app.filename_regex()
+            if regex == None:
+                # Set default filename_regexp: Assume we're dealing with headers
+                regex = re.compile(".*\.h")
+            app.log("Searching directory for '" + regex.pattern +
+                    "' matches.", DEBUG)
+            files = os.listdir(app.source_path())
+            matches = []
+            for f in files:
+                if regex.search(f) != None:
+                    matches.append(os.path.join(app.source_path(), f))
+            app.log("Parsing " + str(len(matches)) + " files.", VERBOSE)
+            for match in matches:
+                self.parse_file(match)
+        else:
+            if app.filename_regex() != None:
+                app.log("Source is a file, but filename regex is defined.")
+            self.parse_file(app.source_path())
+        # Print dictionary in DOT language
+    
+    def parse_file(self, filename):
+        
+        """Parse a file and output the results to the open output file using
+        app.
+        
+        Filename expects an absolute path.
+        """
+        
+        try:
+            source_file = open(filename, 'r')
+        except IOError as err:
+            app.log("Could not open source file: " + str(err), QUIET)
+            return False
+        app.log("Parsing file '" + str(filename) + "'.", DEBUG)
+        # Read file into buffer
+        # Search for include syntax based on app.locality()
+        # Add files links to dictionary
 
 if __name__ == "__main__":
      app = AppState(sys.argv)
+     p = Parser(app)
+     p.parse()
+     del p
      del app #if we don't do this, it cleans up the globals before deleting
