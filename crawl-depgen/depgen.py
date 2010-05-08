@@ -5,6 +5,7 @@ import os
 import time
 import getopt
 import re
+import tokenize
 
 """Depgen - A C/C++ header file dependancy generator that ouputs a graph in
 the DOT graph description language.
@@ -223,13 +224,24 @@ class AppState:
 
 class Parser:
     app = None
+    path_re = None
+    include_re = None
+    included_re = None
     
     def __init__(self, a):
-        a.log("Initializing parser context", DEBUG)
-        app = a
+        a.log("Initializing parser.", DEBUG)
+        self.app = a
+        self.app.log("Compiling regexp parsers.", DEBUG)
+        path_re = self.app.filename_regex()
+        if self.path_re == None:
+            # Set default filename_regexp: Assume we're dealing with headers
+            self.path_re = re.compile(".*\.h")
+        self.include_re = re.compile('^\s*\#include \"[^\"]+\"')
+        self.app.log("Include statement regex: '"+self.include_re.pattern+"'.")
+        self.included_re = re.compile('([^\"]+)')
     
     def __del__(self):
-        app.log("Destroying parser context", DEBUG)
+        self.app.log("Destroying parser context", DEBUG)
     
     def parse(self):
         
@@ -239,25 +251,21 @@ class Parser:
         defined or default regexp and parse the results one by one.
         """
         
-        app.log("Opening source file.", DEBUG)
-        if os.path.isdir(app.source_path()) == True:
-            regex = app.filename_regex()
-            if regex == None:
-                # Set default filename_regexp: Assume we're dealing with headers
-                regex = re.compile(".*\.h")
-            app.log("Searching directory for '" + regex.pattern +
+        self.app.log("Opening source file.", DEBUG)
+        if os.path.isdir(self.app.source_path()) == True:
+            self.app.log("Searching directory for '" + self.path_re.pattern +
                     "' matches.", DEBUG)
-            files = os.listdir(app.source_path())
+            files = os.listdir(self.app.source_path())
             matches = []
             for f in files:
-                if regex.search(f) != None:
-                    matches.append(os.path.join(app.source_path(), f))
-            app.log("Parsing " + str(len(matches)) + " files.", VERBOSE)
+                if self.path_re.search(f) != None:
+                    matches.append(os.path.join(self.app.source_path(), f))
+            self.app.log("Parsing " + str(len(matches)) + " files.", VERBOSE)
             for match in matches:
                 self.parse_file(match)
         else:
-            if app.filename_regex() != None:
-                app.log("Source is a file, but filename regex is defined.")
+            if self.app.filename_regex() != None:
+                self.app.log("Source is a file, but filename regex is defined.")
             self.parse_file(app.source_path())
         # Print dictionary in DOT language
     
@@ -272,12 +280,24 @@ class Parser:
         try:
             source_file = open(filename, 'r')
         except IOError as err:
-            app.log("Could not open source file: " + str(err), QUIET)
+            self.app.log("Could not open source file: " + str(err), QUIET)
             return False
-        app.log("Parsing file '" + str(filename) + "'.", DEBUG)
+        shortname = os.path.basename(str(filename))
+        self.app.log("Parsing '" + shortname + "'.", DEBUG)
         # Read file into buffer
-        # Search for include syntax based on app.locality()
+        matches = []
+        for line in source_file:
+            matches.append(self.included_re.split(line))
+        if len(matches) > 0:
+            self.app.log(str(len(matches)) + " files #included in: "
+                         + shortname, DEBUG)
+            
+        else:
+            self.app.log(   "No #include statements found in file: " + 
+                            shortname, VERBOSE)
         # Add files links to dictionary
+        # Clean up
+        source_file.close()
 
 if __name__ == "__main__":
      app = AppState(sys.argv)
