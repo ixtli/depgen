@@ -124,7 +124,8 @@ class AppState:
                     self.log("Output path exists.  Clobbering.", VERBOSE)
             if self.output_path():
                 #Open the path
-                self.log("Outputting graph to file: " + self.output_path(), DEBUG)
+                self.log("Outputting graph to file: " + self.output_path(),
+                         VERBOSE)
                 try:
                     self._output_file = open(self.output_path(), 'w')
                 except IOError as err:
@@ -237,11 +238,18 @@ class Parser:
             # Set default filename_regexp: Assume we're dealing with headers
             self.path_re = re.compile(".*\.h")
         self.include_re = re.compile('^\s*\#include \"[^\"]+\"')
-        self.app.log("Include statement regex: '"+self.include_re.pattern+"'.")
+        self.app.log("Include statement regex: '"+self.include_re.pattern+"'.",
+                     DEBUG)
         self.included_re = re.compile('([^\"]+)')
     
     def __del__(self):
         self.app.log("Destroying parser context", DEBUG)
+    
+    def emit_graph_prologue(self):
+        self.app.emit_to_file("digraph g {")
+    
+    def emit_graph_epilogue(self):
+        self.app.emit_to_file("}\n")
     
     def parse(self):
         
@@ -252,6 +260,7 @@ class Parser:
         """
         
         self.app.log("Opening source file.", DEBUG)
+        self.emit_graph_prologue()
         if os.path.isdir(self.app.source_path()) == True:
             self.app.log("Searching directory for '" + self.path_re.pattern +
                     "' matches.", DEBUG)
@@ -268,6 +277,7 @@ class Parser:
                 self.app.log("Source is a file, but filename regex is defined.")
             self.parse_file(app.source_path())
         # Print dictionary in DOT language
+        self.emit_graph_epilogue()
     
     def parse_file(self, filename):
         
@@ -287,15 +297,17 @@ class Parser:
         # Read file into buffer
         matches = []
         for line in source_file:
-            matches.append(self.included_re.split(line))
+            if self.include_re.match(line) != None:
+                matches.append(self.included_re.split(line))
         if len(matches) > 0:
             self.app.log(str(len(matches)) + " files #included in: "
                          + shortname, DEBUG)
-            
         else:
             self.app.log(   "No #include statements found in file: " + 
                             shortname, VERBOSE)
         # Add files links to dictionary
+        for match in matches:
+            self.app.emit_to_file('\t"%s" -> "%s";' % (match[3], shortname))
         # Clean up
         source_file.close()
 
