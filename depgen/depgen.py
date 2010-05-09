@@ -220,8 +220,8 @@ class AppState:
         
         self.log("Emitting file header.", DEBUG)
         
-        basename = os.path.basename(self.output_path())
-        self.emit_to_file("Dependancy graph of " + basename, True)
+        basename = os.path.basename(self.source_path())
+        self.emit_to_file("Dependancy graph of '" + basename + "'", True)
 
 class Parser:
     app = None
@@ -302,12 +302,14 @@ class Parser:
         if len(matches) > 0:
             self.app.log(str(len(matches)) + " files #included in: "
                          + shortname, DEBUG)
+            for match in matches:
+                 self.app.emit_to_file('\t"%s" -> "%s";' % (match[3], shortname))
         else:
             self.app.log(   "No #include statements found in file: " + 
                             shortname, VERBOSE)
-        # Add files links to dictionary
-        for match in matches:
-            self.app.emit_to_file('\t"%s" -> "%s";' % (match[3], shortname))
+            # TODO: Conditionally make nodes that don't include anything
+            #self.app.emit_to_file('\t"%s";' % shortname)
+
         # Clean up
         source_file.close()
 
