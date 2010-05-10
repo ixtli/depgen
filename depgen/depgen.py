@@ -32,36 +32,56 @@ class AppState:
     the application data for the script
     """
     
+    # Dictionary of app options (state)
+    options =   {   "verbosity": NOT_VERBOSE,
+                    "output_header": True,
+                    "writeout": False,
+                    "emit_to_stdout": True,
+                    "include_orphans": True,
+                    "filename_regex": None,
+                }
+    
     # Our 'private' data members: These are subject to change without notice
     _source_path = ""
     _output_path = ""
     _output_file = None
-    _writeout_messages = False
-    _verbosity = NOT_VERBOSE
-    _file_header = True
-    _emit_to_stdout = True
-    _filename_regex = None
-    _locality = 0
-    _options = {    "v": "verbose",
-                    "q": "quiet",
-                    "d": "debug",
-                    "s": "silent",
-                    "l": "writeout-messages",
-                    "n": "no-header",
-                    "f": "file-output-only",
-                    "r:": "file-name-regex",
-                    "u": "usage" }
+    
+    # Dictionary of command line options.
+    _options =  {   "v": ("verbose",
+                        "Print informative messages."),
+                    "q": ("quiet", 
+                        "Print errors only."),
+                    "d": ("debug",
+                        "Print everything we know about what we're doing."),
+                    "s": ("silent",
+                        "Print nothing."),
+                    "l": ("writeout",
+                        "Emit DOT output to stdout."),
+                    "n": ("no-output-header",
+                        "Do not include a header in the output file."),
+                    "f": ("stdout-only",
+                        "Do not write an output file."),
+                    "r:": ("filename-regex",
+                        "Specify the regex for '#include' statement."),
+                    "o": ("include-orphans",
+                        "Include orphan nodes (no connections) in graph."),
+                    "u": ("usage",
+                        "Print this usage information."),
+                }
     
     # Member function definitions
     def __init__(self, argv):
         
         """Expects command line arguments from execution."""
         
+        opt = ""
+        longopt = []
+        for o in self._options.keys():
+             opt += o
+        for o in self._options.values():
+            longopt.append(o[0])
         try:
-            opt = ""
-            for o in self._options.keys():
-                 opt += o
-            opts, args = getopt.getopt(argv[1:], opt, self._options.values())
+            opts, args = getopt.getopt(argv[1:], opt, longopt)
         except getopt.GetoptError, err:
             print str(err)
             self.usage(argv[0])
@@ -69,31 +89,35 @@ class AppState:
         
         for option, value in opts:
             if option in ("-v", self._options["v"]):
-                self._verbosity = VERBOSE
+                self.options["verbosity"] = VERBOSE
             elif option in ("-q", self._options["q"]):
-                self._verbosity = QUIET
+                self.options["verbosity"] = QUIET
             elif option in ("-d", self._options["d"]):
-                self._verbosity = DEBUG
+                self.options["verbosity"] = DEBUG
                 self.log("Verbosity set to DEBUG.", DEBUG)
             elif option in ("-s", self._options["s"]):
-                self._verbosity = SILENT
+                self.options["verbosity"] = SILENT
             elif option in ("-l", self._options["l"]):
-                # Write out log messages at the current verbosity to the
-                # Output file
-                self._writeout_messages = True
+                # Write log messages at the current verbosity to the output file
+                self.options["writeout"] = True
                 self.log("Writing messages to output file.", DEBUG)
             elif option in ("-n", self._options["n"]):
-                self._file_header = False
+                self.options["output_header"] = False
                 self.log("Not emitting file header.", DEBUG)
             elif option in ("-f", self._options["f"]):
-                self._emit_to_stdout = False
-                self.log("Not emitting DOT code to stdout.", DEBUG)
+               self.options["emit_to_stdout"] = False
+               self.log("Not emitting DOT code to stdout.", DEBUG)
             elif option in ("-r", self._options["r:"]):
-                self._filename_regex = re.compile(value);
+                self.options["filename_regex"] = re.compile(value);
                 self.log("Parsing files that match '" + value + "'.", DEBUG)
             elif option in ("-u", self._options["u"]):
+                # Print usage
                 self.usage(argv[0])
                 sys.exit(0)
+            elif option in ("-o", self._options["o"]):
+                # Include orphan nodes (no connections in or out)
+                self.options["include_orphans"] = True
+                self.log("Including orphan nodes in output graph.", VERBOSE)
             else:
                 self.log("Unknown option '" + option +"'.", QUIET)
                 self.usage(argv[0])
@@ -122,6 +146,7 @@ class AppState:
                     self._output_path = ""
                 else:
                     self.log("Output path exists.  Clobbering.", VERBOSE)
+            
             if self.output_path():
                 #Open the path
                 self.log("Outputting graph to file: " + self.output_path(),
@@ -164,12 +189,12 @@ class AppState:
         a valid DOT file.
         """
         
-        if self.verbosity() == SILENT:
+        if self.options["verbosity"] == SILENT:
             return
         
-        if self.verbosity() >= verb:
+        if self.options["verbosity"] >= verb:
             print str(message)
-            if self._writeout_messages and self._output_file != None:
+            if self.options["writeout"] and self._output_file != None:
                 self.emit_to_file("// " + message)
     
     def source_path(self):
@@ -178,27 +203,12 @@ class AppState:
         
         return self._source_path
     
-    def filename_regex(self):
-        
-        """Return the regex for matchin files in _source_file"""
-        
-        return self._filename_regex
-    
     def output_path(self):
         
         """Return the current output path."""
         
         return self._output_path
     
-    def verbosity(self):
-        
-        """Return the current verbosity."""
-        
-        return self._verbosity
-
-    def locality(self):
-        return self._locality
-
     def emit_to_file(self, message, comment = False):
         
         """Emit a string to the output file.
@@ -212,8 +222,7 @@ class AppState:
         if comment == True:
             self._output_file.write("// ")
         self._output_file.write(str(message) + '\n')
-        
-
+    
     def emit_file_header(self):
         
         """Emit an informative file header."""
@@ -223,7 +232,15 @@ class AppState:
         basename = os.path.basename(self.source_path())
         self.emit_to_file("Dependancy graph of '" + basename + "'", True)
 
+
 class Parser:
+    
+    """Parser class.
+    
+    Given an Application object, it parses the source file and generates an
+    input dep graph based on it.
+    """
+    
     app = None
     path_re = None
     include_re = None
@@ -233,7 +250,7 @@ class Parser:
         a.log("Initializing parser.", DEBUG)
         self.app = a
         self.app.log("Compiling regexp parsers.", DEBUG)
-        path_re = self.app.filename_regex()
+        path_re = self.app.options["filename_regex"]
         if self.path_re == None:
             # Set default filename_regexp: Assume we're dealing with headers
             self.path_re = re.compile(".*\.h")
@@ -243,7 +260,7 @@ class Parser:
         self.included_re = re.compile('([^\"]+)')
     
     def __del__(self):
-        self.app.log("Destroying parser context", DEBUG)
+        self.app.log("Destroying parser context.", DEBUG)
     
     def emit_graph_prologue(self):
         self.app.emit_to_file("digraph g {")
@@ -273,7 +290,7 @@ class Parser:
             for match in matches:
                 self.parse_file(match)
         else:
-            if self.app.filename_regex() != None:
+            if self.app.options["filename_regex"] != None:
                 self.app.log("Source is a file, but filename regex is defined.")
             self.parse_file(app.source_path())
         # Print dictionary in DOT language
@@ -281,8 +298,8 @@ class Parser:
     
     def parse_file(self, filename):
         
-        """Parse a file and output the results to the open output file using
-        app.
+        """Parse the file at filename and output the results to the output file
+        app has open.
         
         Filename expects an absolute path.
         """
@@ -309,9 +326,10 @@ class Parser:
                             shortname, VERBOSE)
             # TODO: Conditionally make nodes that don't include anything
             #self.app.emit_to_file('\t"%s";' % shortname)
-
+        
         # Clean up
         source_file.close()
+
 
 if __name__ == "__main__":
      app = AppState(sys.argv)
