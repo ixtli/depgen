@@ -42,7 +42,8 @@ class AppState:
                     "emit_to_stdout": False,
                     "include_orphans": False,
                     "filename_regex": None,
-                    "ranksep": 3
+                    "ranksep": 3,
+                    "recursive": False
                 }
     
     # Our 'private' data members: These are subject to change without notice
@@ -72,7 +73,9 @@ class AppState:
                     "u": ("usage",
                         "Print this usage information."),
                     "r:": ("ranksep",
-                        "Explicitly set GraphViz 'ranksep' value.")
+                        "Explicitly set GraphViz 'ranksep' value."),
+                    "R:": ("recursive",
+                        "Searches source directory recursively for X files.")
                 }
     
     # Member function definitions
@@ -92,42 +95,8 @@ class AppState:
             print str(err)
             self.usage(argv[0])
             sys.exit(2)
-        
         for option, value in opts:
-            if option in ("-v", self._options["v"]):
-                self.options["verbosity"] = VERBOSE
-            elif option in ("-q", self._options["q"]):
-                self.options["verbosity"] = QUIET
-            elif option in ("-d", self._options["d"]):
-                self.options["verbosity"] = DEBUG
-                self.log("Verbosity set to DEBUG.", DEBUG)
-            elif option in ("-s", self._options["s"]):
-                self.options["verbosity"] = SILENT
-            elif option in ("-w", self._options["w"]):
-                # Write log messages at the current verbosity to the output file
-                self.options["writeout"] = True
-                self.log("Writing messages to output file.", DEBUG)
-            elif option in ("-n", self._options["n"]):
-                self.options["output_header"] = False
-                self.log("Not emitting file header.", DEBUG)
-            elif option in ("-t", self._options["t"]):
-               self.options["emit_to_stdout"] = True
-               self.log("Emitting DOT code to stdout.", DEBUG)
-            elif option in ("-f", self._options["f:"]):
-                self.options["filename_regex"] = re.compile(value);
-                self.log("Parsing files that match '" + value + "'.", DEBUG)
-            elif option in ("-u", self._options["u"]):
-                # Print usage
-                self.usage(argv[0])
-                sys.exit(0)
-            elif option in ("-i", self._options["i"]):
-                # Include orphan nodes (no connections in or out)
-                self.options["include_orphans"] = True
-                self.log("Including orphan nodes in output graph.", DEBUG)
-            elif option in ("-r", self._options["r:"]):
-                self.options["ranksep"] = value
-                self.log("Ranksep set to " + value, DEBUG)
-            else:
+            if self.handle_arguments(option, value) != True:
                 self.log("Unknown option '" + option +"'.", QUIET)
                 self.usage(argv[0])
                 sys.exit(2)
@@ -171,6 +140,64 @@ class AppState:
         
         self.log("Application context initialized.", DEBUG)
     
+    def handle_arguments(self, option, value):
+        """Support function for handling cl arguments."""
+        
+        if option in ("-v", self._options["v"]):
+            self.options["verbosity"] = VERBOSE
+            return True
+        elif option in ("-q", self._options["q"]):
+            self.options["verbosity"] = QUIET
+            return True
+        elif option in ("-d", self._options["d"]):
+            self.options["verbosity"] = DEBUG
+            self.log("Verbosity set to DEBUG.", DEBUG)
+            return True
+        elif option in ("-s", self._options["s"]):
+            self.options["verbosity"] = SILENT
+            return True
+        elif option in ("-w", self._options["w"]):
+            # Write log messages at the current verbosity to the output file
+            self.options["writeout"] = True
+            self.log("Writing messages to output file.", DEBUG)
+            return True
+        elif option in ("-n", self._options["n"]):
+            self.options["output_header"] = False
+            self.log("Not emitting file header.", DEBUG)
+            return True
+        elif option in ("-t", self._options["t"]):
+           self.options["emit_to_stdout"] = True
+           self.log("Emitting DOT code to stdout.", DEBUG)
+           return True
+        elif option in ("-f", self._options["f:"]):
+            self.options["filename_regex"] = re.compile(value);
+            self.log("Parsing files that match '" + value + "'.", DEBUG)
+            return True
+        elif option in ("-u", self._options["u"]):
+            # Print usage
+            self.usage(argv[0])
+            sys.exit(0)
+            return True
+        elif option in ("-i", self._options["i"]):
+            # Include orphan nodes (no connections in or out)
+            self.options["include_orphans"] = True
+            self.log("Including orphan nodes in output graph.", DEBUG)
+            return True
+        elif option in ("-r", self._options["r:"]):
+            self.options["ranksep"] = value
+            self.log("Ranksep set to " + value, DEBUG)
+            return True
+        elif option in ("-R", self._options["R:"]):
+            if int(value) < 0:
+                self.log("Bad value for --recursive: %s" % value, QUIET)
+                return False
+            self.options["recursive"] = int(value)
+            self.log("Recursively searching up to %s directories." % value,
+                     DEBUG)
+            return True
+        else:
+            return False
+    
     def __del__(self):
         
         """Destructor."""
@@ -195,7 +222,7 @@ class AppState:
             self.log("-%s  --%s\t%s" % (
                 key[0], self._options[key][0], self._options[key][1]))
     
-    def log(self, message, verb = 0):
+    def log(self, message, verb = 0, newline = True):
         
         """Print to stdout and append // so that our output is always
         a valid DOT file.
@@ -210,11 +237,13 @@ class AppState:
         
         if self.options["verbosity"] >= verb:
             if self.options["emit_to_stdout"] == True:
-                print self.dot(str(message), True)
+                sys.stdout.write(self.dot(str(message), True))
             else:
-                print str(message)
+                sys.stdout.write(str(message))
+            if newline == True:
+                sys.stdout.write('\n')
             if self.options["writeout"] == True:
-                self.emit(message, True)
+                self.emit(message, True, newline)
     
     def source_path(self):
         
@@ -229,6 +258,13 @@ class AppState:
         return self._output_path
     
     def dot(self, message, comment = False):
+        """Return a line of valid DOT code which respects the current indent
+        value and structures comments correctly.
+        
+        Does not syntax check code, though this might be an interesting feature
+        to support one day.
+        """
+        
         out = ""
         for x in range(self.indent):
             out += '\t'
@@ -236,7 +272,7 @@ class AppState:
             out += "// "
         return out + message
     
-    def emit(self, message, comment = False):
+    def emit(self, message, comment = False, newline = True):
         
         """Emit a string to the output file.
         
@@ -246,12 +282,16 @@ class AppState:
         vd = self.dot(message, comment)
         
         if self.options["emit_to_stdout"] == True:
-            print vd
+            sys.stdout.write(vd)
+            if newline == True:
+                sys.stdout.write('\n')
         
         if self._output_file == None:
             return
         
-        self._output_file.write(vd + '\n')
+        self._output_file.write(vd)
+        if newline == True:
+            self._output_file.write('\n')
     
     def emit_file_header(self):
         
@@ -276,6 +316,11 @@ class Parser:
     include_re = None
     included_re = None
     
+    # Make sure we don't go on forever
+    _current_depth = 0
+    
+    _total_file_count = 0
+    
     graph = []
     sterile = []  # nodes with no children
     
@@ -288,9 +333,12 @@ class Parser:
             # Set default filename_regexp: Assume we're dealing with headers
             self.path_re = re.compile(".*\.h")
         self.include_re = re.compile('^\s*\#include \"[^\"]+\"')
-        self.app.log("Include statement regex: '"+self.include_re.pattern+"'.",
-                     DEBUG)
         self.included_re = re.compile('([^\"]+)')
+        
+        self.app.log("Include statement regex: %s " % self.include_re.pattern,
+                     DEBUG)
+        self.app.log("Filename regex: %s" % self.path_re.pattern, DEBUG )
+        
     
     def __del__(self):
         self.app.log("Destroying parser context.", DEBUG)
@@ -344,16 +392,9 @@ class Parser:
         
         self.app.log("Opening source file.", DEBUG)
         if os.path.isdir(self.app.source_path()) == True:
-            self.app.log("Searching directory for '" + self.path_re.pattern +
-                    "' matches.", DEBUG)
-            files = os.listdir(self.app.source_path())
-            matches = []
-            for f in files:
-                if self.path_re.search(f) != None:
-                    matches.append(os.path.join(self.app.source_path(), f))
-            self.app.log("Parsing " + str(len(matches)) + " files.", VERBOSE)
-            for match in matches:
-                self.parse_file(match)
+            # Make sure we reinit recursion max depth
+            self._current_depth = 0
+            self.parse_directory(self.app.source_path())
         else:
             if self.app.options["filename_regex"] != None:
                 self.app.log("Source is a file, but filename regex is defined.")
@@ -361,6 +402,46 @@ class Parser:
         
         # Emit graph
         self.emit_graph()
+        
+        # Print statistics
+        self.app.log("Parsed %s files." % self._total_file_count, VERBOSE)
+    
+    def parse_directory(self, dirpath):
+        
+        """Parse a directory using the regex, sending each matching filename
+        to parse_file
+        
+        Dirpath needs to be absolute or relative to the cdw.
+        """
+        
+        self.app.log("Searching directory '%s'." % dirpath, DEBUG)
+        
+        # List directories
+        files = os.listdir(dirpath)
+        matches = []
+        for f in files:
+            # If directories exist, check the max depth and recurse
+            full = os.path.join(dirpath, f)
+            if os.path.isdir(full) == True:
+                self._current_depth += 1
+                if self._current_depth < self.app.options["recursive"]:
+                    self.app.log("Recursing on '%s'. Depth: %i" %
+                                (full, self._current_depth), DEBUG)
+                    self.parse_directory(full)
+                else:
+                    if self.app.options["recursive"] > 0:
+                        self.app.log("Maximum recursion depth reached.  \
+                                     Not searching '%s'." % f, DEBUG)
+                self._current_depth -= 1
+            
+            # If not, process the directory
+            if self.path_re.search(full) != None:
+                matches.append(full)
+        
+        # Now parse the files we found
+        for match in matches:
+            self.parse_file(match)
+        
     
     def parse_file(self, filename):
         
@@ -377,23 +458,24 @@ class Parser:
             return False
         
         shortname = os.path.basename(str(filename))
-        self.app.log("Parsing '" + shortname + "'.", DEBUG)
+        self.app.log("Parsing '" + shortname + "': ", DEBUG, False)
         
         matches = []
         for line in source_file:
             if self.include_re.match(line) != None:
                 matches.append(self.included_re.split(line)[3])
         if len(matches) > 0:
-            self.app.log(str(len(matches)) + " files #included in: "
-                         + shortname, DEBUG)
             self.graph.append((shortname, matches))
         else:
-            self.app.log("No #include statements found in file: " + 
-                         shortname, DEBUG)
             self.sterile.append(shortname)
+        
+        self.app.log(str(len(matches)) + " files #included.", DEBUG)
         
         # Clean up
         source_file.close()
+        
+        # Add to the count
+        self._total_file_count += 1
 
 
 if __name__ == "__main__":
