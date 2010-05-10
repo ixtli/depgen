@@ -324,8 +324,11 @@ class Parser:
         else:
             self.app.log(   "No #include statements found in file: " + 
                             shortname, VERBOSE)
-            # TODO: Conditionally make nodes that don't include anything
-            #self.app.emit_to_file('\t"%s";' % shortname)
+            # Conditionally make nodes that don't include anything
+            if self.app.options["include_orphans"] == True:
+                self.app.emit_to_file('\t"%s";' % shortname)
+        
+        # Add matches to class dictionary
         
         # Clean up
         source_file.close()
