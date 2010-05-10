@@ -32,12 +32,15 @@ class AppState:
     the application data for the script
     """
     
+    # Current indent in output file
+    indent = 0
+    
     # Dictionary of app options (state)
     options =   {   "verbosity": NOT_VERBOSE,
                     "output_header": True,
                     "writeout": False,
                     "emit_to_stdout": True,
-                    "include_orphans": True,
+                    "include_orphans": False,
                     "filename_regex": None,
                 }
     
@@ -63,8 +66,8 @@ class AppState:
                         "Do not write an output file."),
                     "r:": ("filename-regex",
                         "Specify the regex for '#include' statement."),
-                    "o": ("include-orphans",
-                        "Include orphan nodes (no connections) in graph."),
+                    "i": ("include-sterile",
+                        "Explicitly include nodes that have no children."),
                     "u": ("usage",
                         "Print this usage information."),
                 }
@@ -219,8 +222,15 @@ class AppState:
         if self._output_file == None:
             self.log("Tried to emit to file when one wasn't set.", DEBUG)
             return
+        
+        tabs = ""
+        for x in range(self.indent):
+            tabs += '\t'
+        self._output_file.write(tabs)
+        
         if comment == True:
             self._output_file.write("// ")
+        
         self._output_file.write(str(message) + '\n')
     
     def emit_file_header(self):
@@ -246,6 +256,9 @@ class Parser:
     include_re = None
     included_re = None
     
+    graph = []
+    sterile = []  # nodes with no children
+    
     def __init__(self, a):
         a.log("Initializing parser.", DEBUG)
         self.app = a
@@ -268,6 +281,32 @@ class Parser:
     def emit_graph_epilogue(self):
         self.app.emit_to_file("}\n")
     
+    def emit_graph_content(self):
+        # Optionally include orphan nodes first
+        # TODO: Make this check to see if it's really an orphan.
+        if app.options["include_orphans"] == True:
+            self.app.emit_to_file("Orphan nodes:", True)
+            for name in self.sterile:
+                self.app.emit_to_file("'%s';" % name)
+        
+        # Print the rest
+        for include in self.graph:
+            self.app.emit_to_file("Files included by " + include[0], True)
+            for included in include[1]:
+                self.app.emit_to_file("'%s' -> '%s';" % (include[0], included))
+    
+    def emit_graph(self):
+        # Start file
+        self.emit_graph_prologue()
+        
+        # Print dictionary in DOT language
+        self.app.indent = 1
+        self.emit_graph_content()
+        self.app.indent = 0
+        
+        # Finish file
+        self.emit_graph_epilogue()
+    
     def parse(self):
         
         """Parse the file at app.source_path().
@@ -277,7 +316,6 @@ class Parser:
         """
         
         self.app.log("Opening source file.", DEBUG)
-        self.emit_graph_prologue()
         if os.path.isdir(self.app.source_path()) == True:
             self.app.log("Searching directory for '" + self.path_re.pattern +
                     "' matches.", DEBUG)
@@ -293,8 +331,9 @@ class Parser:
             if self.app.options["filename_regex"] != None:
                 self.app.log("Source is a file, but filename regex is defined.")
             self.parse_file(app.source_path())
-        # Print dictionary in DOT language
-        self.emit_graph_epilogue()
+        
+        # Emit graph
+        self.emit_graph()
     
     def parse_file(self, filename):
         
@@ -309,26 +348,22 @@ class Parser:
         except IOError as err:
             self.app.log("Could not open source file: " + str(err), QUIET)
             return False
+        
         shortname = os.path.basename(str(filename))
         self.app.log("Parsing '" + shortname + "'.", DEBUG)
-        # Read file into buffer
+        
         matches = []
         for line in source_file:
             if self.include_re.match(line) != None:
-                matches.append(self.included_re.split(line))
+                matches.append(self.included_re.split(line)[3])
         if len(matches) > 0:
             self.app.log(str(len(matches)) + " files #included in: "
                          + shortname, DEBUG)
-            for match in matches:
-                 self.app.emit_to_file('\t"%s" -> "%s";' % (match[3], shortname))
+            self.graph.append((shortname, matches))
         else:
-            self.app.log(   "No #include statements found in file: " + 
-                            shortname, VERBOSE)
-            # Conditionally make nodes that don't include anything
-            if self.app.options["include_orphans"] == True:
-                self.app.emit_to_file('\t"%s";' % shortname)
-        
-        # Add matches to class dictionary
+            self.app.log("No #include statements found in file: " + 
+                         shortname, DEBUG)
+            self.sterile.append(shortname)
         
         # Clean up
         source_file.close()
