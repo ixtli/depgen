@@ -204,7 +204,7 @@ class AppState:
         if self.options["verbosity"] >= verb:
             print str(message)
             if self.options["writeout"] and self._output_file != None:
-                self.emit_to_file("// " + message)
+                self.emit("// " + message)
     
     def source_path(self):
         
@@ -218,7 +218,7 @@ class AppState:
         
         return self._output_path
     
-    def emit_to_file(self, message, comment = False):
+    def emit(self, message, comment = False):
         
         """Emit a string to the output file.
         
@@ -246,7 +246,7 @@ class AppState:
         self.log("Emitting file header.", DEBUG)
         
         basename = os.path.basename(self.source_path())
-        self.emit_to_file("Dependancy graph of '" + basename + "'", True)
+        self.emit("Dependancy graph of '" + basename + "'", True)
 
 
 class Parser:
@@ -282,30 +282,32 @@ class Parser:
         self.app.log("Destroying parser context.", DEBUG)
     
     def emit_graph_prologue(self):
-        self.app.emit_to_file("digraph g {")
+        self.app.emit("digraph g {")
     
     def emit_graph_epilogue(self):
-        self.app.emit_to_file("}\n")
+        self.app.emit("}\n")
     
     def emit_graph_options(self):
-        self.app.emit_to_file("Graph Settings", True)
-        self.app.emit_to_file("ranksep=%i;" % self.app.options["ranksep"])
+        self.app.emit("Graph Settings", True)
+        self.app.emit("ranksep=%i;" % self.app.options["ranksep"])
     
     def emit_graph_content(self):
+        self.app.log("Emitting graph contents.", DEBUG)
         # Optionally include orphan nodes first
         # TODO: Make this check to see if it's really an orphan.
         if app.options["include_orphans"] == True:
-            self.app.emit_to_file("Orphan nodes:", True)
+            self.app.emit("Orphan nodes:", True)
             for name in self.sterile:
-                self.app.emit_to_file("'%s';" % name)
+                self.app.emit("'%s';" % name)
         
         # Print the rest
         for include in self.graph:
-            self.app.emit_to_file("Files included by " + include[0], True)
+            self.app.emit("Files included by " + include[0], True)
             for included in include[1]:
-                self.app.emit_to_file('"%s" -> "%s";' % (include[0], included))
+                self.app.emit('"%s" -> "%s";' % (include[0], included))
     
     def emit_graph(self):
+        self.app.log("Emitting graph.", DEBUG)
         # Start file
         self.emit_graph_prologue()
         
