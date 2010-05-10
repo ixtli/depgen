@@ -39,7 +39,7 @@ class AppState:
     options =   {   "verbosity": NOT_VERBOSE,
                     "output_header": True,
                     "writeout": False,
-                    "emit_to_stdout": True,
+                    "emit_to_stdout": False,
                     "include_orphans": False,
                     "filename_regex": None,
                     "ranksep": 3
@@ -59,15 +59,15 @@ class AppState:
                         "Print everything we know about what we're doing."),
                     "s": ("silent",
                         "Print nothing."),
-                    "l": ("writeout",
-                        "Emit DOT output to stdout."),
+                    "w": ("writeout",
+                        "Write messages to output file."),
                     "n": ("no-output-header",
                         "Do not include a header in the output file."),
-                    "t": ("stdout-only",
-                        "Do not write an output file."),
+                    "t": ("stdout",
+                        "Force messages to stdout to be valid DOT."),
                     "f:": ("filename-regex",
                         "Specify the regex for '#include' statement."),
-                    "i": ("include-sterile",
+                    "i": ("include-orphans",
                         "Explicitly include nodes that have no children."),
                     "u": ("usage",
                         "Print this usage information."),
@@ -103,7 +103,7 @@ class AppState:
                 self.log("Verbosity set to DEBUG.", DEBUG)
             elif option in ("-s", self._options["s"]):
                 self.options["verbosity"] = SILENT
-            elif option in ("-l", self._options["l"]):
+            elif option in ("-w", self._options["w"]):
                 # Write log messages at the current verbosity to the output file
                 self.options["writeout"] = True
                 self.log("Writing messages to output file.", DEBUG)
@@ -111,8 +111,8 @@ class AppState:
                 self.options["output_header"] = False
                 self.log("Not emitting file header.", DEBUG)
             elif option in ("-t", self._options["t"]):
-               self.options["emit_to_stdout"] = False
-               self.log("Not emitting DOT code to stdout.", DEBUG)
+               self.options["emit_to_stdout"] = True
+               self.log("Emitting DOT code to stdout.", DEBUG)
             elif option in ("-f", self._options["f:"]):
                 self.options["filename_regex"] = re.compile(value);
                 self.log("Parsing files that match '" + value + "'.", DEBUG)
@@ -120,10 +120,10 @@ class AppState:
                 # Print usage
                 self.usage(argv[0])
                 sys.exit(0)
-            elif option in ("-o", self._options["o"]):
+            elif option in ("-i", self._options["i"]):
                 # Include orphan nodes (no connections in or out)
                 self.options["include_orphans"] = True
-                self.log("Including orphan nodes in output graph.", VERBOSE)
+                self.log("Including orphan nodes in output graph.", DEBUG)
             elif option in ("-r", self._options["r:"]):
                 self.options["ranksep"] = value
                 self.log("Ranksep set to " + value, DEBUG)
@@ -199,12 +199,19 @@ class AppState:
         """
         
         if self.options["verbosity"] == SILENT:
+            # -sw should emit messages to file at normal verbosity
+            if self.options["writeout"] == True:
+                if verb <= NOT_VERBOSE:
+                    self.emit(message, True)
             return
         
         if self.options["verbosity"] >= verb:
-            print str(message)
-            if self.options["writeout"] and self._output_file != None:
-                self.emit("// " + message)
+            if self.options["emit_to_stdout"] == True:
+                print self.dot(str(message), True)
+            else:
+                print str(message)
+            if self.options["writeout"] == True:
+                self.emit(message, True)
     
     def source_path(self):
         
@@ -218,6 +225,14 @@ class AppState:
         
         return self._output_path
     
+    def dot(self, message, comment = False):
+        out = ""
+        for x in range(self.indent):
+            out += '\t'
+        if comment == True:
+            out += "// "
+        return out + message
+    
     def emit(self, message, comment = False):
         
         """Emit a string to the output file.
@@ -225,19 +240,15 @@ class AppState:
         If comment = True, then prefix with // as per DOT language specs.
         """
         
+        vd = self.dot(message, comment)
+        
+        if self.options["emit_to_stdout"] == True:
+            print vd
+        
         if self._output_file == None:
-            self.log("Tried to emit to file when one wasn't set.", DEBUG)
             return
         
-        tabs = ""
-        for x in range(self.indent):
-            tabs += '\t'
-        self._output_file.write(tabs)
-        
-        if comment == True:
-            self._output_file.write("// ")
-        
-        self._output_file.write(str(message) + '\n')
+        self._output_file.write(vd + '\n')
     
     def emit_file_header(self):
         
@@ -298,7 +309,7 @@ class Parser:
         if app.options["include_orphans"] == True:
             self.app.emit("Orphan nodes:", True)
             for name in self.sterile:
-                self.app.emit("'%s';" % name)
+                self.app.emit('"%s";' % name)
         
         # Print the rest
         for include in self.graph:
