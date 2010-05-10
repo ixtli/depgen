@@ -61,13 +61,13 @@ class AppState:
                         "Print nothing."),
                     "w": ("writeout",
                         "Write messages to output file."),
-                    "n": ("no-output-header",
+                    "n": ("noheader",
                         "Do not include a header in the output file."),
                     "t": ("stdout",
                         "Force messages to stdout to be valid DOT."),
-                    "f:": ("filename-regex",
+                    "f:": ("regex",
                         "Specify the regex for '#include' statement."),
-                    "i": ("include-orphans",
+                    "i": ("orphans",
                         "Explicitly include nodes that have no children."),
                     "u": ("usage",
                         "Print this usage information."),
@@ -189,8 +189,11 @@ class AppState:
         opt = ""
         for o in self._options.keys():
              opt += o[0]
-        self.log( "USEAGE: " + scriptname + " [-" + opt +
-                "] <source dir> [<target dir>]")
+        self.log("USEAGE: " + scriptname + " [-" + opt +
+                 "] <source dir> [<target dir>]")
+        for key in self._options.keys():
+            self.log("-%s  --%s\t%s" % (
+                key[0], self._options[key][0], self._options[key][1]))
     
     def log(self, message, verb = 0):
         
