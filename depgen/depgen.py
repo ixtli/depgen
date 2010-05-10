@@ -293,7 +293,7 @@ class Parser:
         for include in self.graph:
             self.app.emit_to_file("Files included by " + include[0], True)
             for included in include[1]:
-                self.app.emit_to_file("'%s' -> '%s';" % (include[0], included))
+                self.app.emit_to_file('"%s" -> "%s";' % (include[0], included))
     
     def emit_graph(self):
         # Start file
