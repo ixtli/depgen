@@ -42,6 +42,7 @@ class AppState:
                     "emit_to_stdout": True,
                     "include_orphans": False,
                     "filename_regex": None,
+                    "ranksep": 3
                 }
     
     # Our 'private' data members: These are subject to change without notice
@@ -62,14 +63,16 @@ class AppState:
                         "Emit DOT output to stdout."),
                     "n": ("no-output-header",
                         "Do not include a header in the output file."),
-                    "f": ("stdout-only",
+                    "t": ("stdout-only",
                         "Do not write an output file."),
-                    "r:": ("filename-regex",
+                    "f:": ("filename-regex",
                         "Specify the regex for '#include' statement."),
                     "i": ("include-sterile",
                         "Explicitly include nodes that have no children."),
                     "u": ("usage",
                         "Print this usage information."),
+                    "r:": ("ranksep",
+                        "Explicitly set GraphViz 'ranksep' value.")
                 }
     
     # Member function definitions
@@ -107,10 +110,10 @@ class AppState:
             elif option in ("-n", self._options["n"]):
                 self.options["output_header"] = False
                 self.log("Not emitting file header.", DEBUG)
-            elif option in ("-f", self._options["f"]):
+            elif option in ("-t", self._options["t"]):
                self.options["emit_to_stdout"] = False
                self.log("Not emitting DOT code to stdout.", DEBUG)
-            elif option in ("-r", self._options["r:"]):
+            elif option in ("-f", self._options["f:"]):
                 self.options["filename_regex"] = re.compile(value);
                 self.log("Parsing files that match '" + value + "'.", DEBUG)
             elif option in ("-u", self._options["u"]):
@@ -121,6 +124,9 @@ class AppState:
                 # Include orphan nodes (no connections in or out)
                 self.options["include_orphans"] = True
                 self.log("Including orphan nodes in output graph.", VERBOSE)
+            elif option in ("-r", self._options["r:"]):
+                self.options["ranksep"] = value
+                self.log("Ranksep set to " + value, DEBUG)
             else:
                 self.log("Unknown option '" + option +"'.", QUIET)
                 self.usage(argv[0])
@@ -281,6 +287,10 @@ class Parser:
     def emit_graph_epilogue(self):
         self.app.emit_to_file("}\n")
     
+    def emit_graph_options(self):
+        self.app.emit_to_file("Graph Settings", True)
+        self.app.emit_to_file("ranksep=%i;" % self.app.options["ranksep"])
+    
     def emit_graph_content(self):
         # Optionally include orphan nodes first
         # TODO: Make this check to see if it's really an orphan.
@@ -301,6 +311,7 @@ class Parser:
         
         # Print dictionary in DOT language
         self.app.indent = 1
+        self.emit_graph_options()
         self.emit_graph_content()
         self.app.indent = 0
         
