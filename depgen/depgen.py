@@ -75,7 +75,9 @@ class AppState:
                     "r:": ("ranksep",
                         "Explicitly set GraphViz 'ranksep' value."),
                     "R:": ("recursive",
-                        "Searches source directory recursively for X files.")
+                        "Searches source directory recursively for X files."),
+                    "l": ("systemlibs",
+                        "Include linkage to system headers (<>) in output.")
                 }
     
     # Member function definitions
@@ -114,6 +116,8 @@ class AppState:
             self.log("Invalid source file given.", QUIET)
             self.usage(argv[0])
             sys.exit(2)
+        
+        self.options["systemlibs"] = False
         
         # Optionally set _output_path
         if len(args) > 1:
@@ -194,6 +198,9 @@ class AppState:
             self.options["recursive"] = int(value)
             self.log("Recursively searching up to %s directories." % value,
                      DEBUG)
+            return True
+        elif option in ("-l", self._options["l"]):
+            self.options["systemlibs"] = True
             return True
         else:
             return False
@@ -315,6 +322,7 @@ class Parser:
     path_re = None
     include_re = None
     included_re = None
+    sysinclude_re = None
     
     # Make sure we don't go on forever
     _current_depth = 0
@@ -334,6 +342,12 @@ class Parser:
             self.path_re = re.compile(".*\.h")
         self.include_re = re.compile('^\s*\#include \"[^\"]+\"')
         self.included_re = re.compile('([^\"]+)')
+        
+        # Compile sysinclude_re if the user wants it (-l flag)
+        if self.app.options["systemlibs"] == True:
+            self.sysinclude_re = re.compile('^\s*\#include <[^>]+>')
+            self.app.log("System include regex: %s" % self.sysinclude_re.pattern,
+                        DEBUG)
         
         self.app.log("Include statement regex: %s " % self.include_re.pattern,
                      DEBUG)
@@ -463,7 +477,12 @@ class Parser:
         matches = []
         for line in source_file:
             if self.include_re.match(line) != None:
+                print (self.included_re.split(line))
                 matches.append(self.included_re.split(line)[3])
+            if self.sysinclude_re != None:
+                if self.sysinclude_re.match(line) != None:
+                    print(self.sysinclude_re.split(line))
+                    matches.append(self.sysinclude_re.split(line)[3])
         if len(matches) > 0:
             self.graph.append((shortname, matches))
         else:
